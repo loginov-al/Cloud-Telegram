@@ -1,0 +1,6 @@
+.env
+.venv
+.рус
+__pycahe__
+data/
+.bot.lock
