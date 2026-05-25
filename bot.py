@@ -36,7 +36,20 @@ from aiohttp import web
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-bot = Bot(token=config.token)
+
+def create_bot() -> Bot:
+    from aiogram.client.session.aiohttp import AiohttpSession
+
+    session_kwargs = {"timeout": config.TELEGRAM_TIMEOUT}
+    if config.TELEGRAM_PROXY:
+        session_kwargs["proxy"] = config.TELEGRAM_PROXY
+        logger.info("Telegram proxy: %s", config.TELEGRAM_PROXY.split("@")[-1])
+
+    session = AiohttpSession(**session_kwargs)
+    return Bot(token=config.token, session=session)
+
+
+bot = create_bot()
 db = Dispatcher(storage=MemoryStorage())
 LOCK_FILE = Path(__file__).parent / ".bot.lock"
 
@@ -1444,12 +1457,42 @@ async def start_web_panel(host: str, port: int) -> None:
     await site.start()
 
 
+async def _connect_telegram() -> None:
+    last_error = None
+    for attempt in range(1, 6):
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+            me = await bot.get_me()
+            logger.info("Telegram подключён: @%s", me.username)
+            return
+        except Exception as exc:
+            last_error = exc
+            wait = attempt * 3
+            logger.warning(
+                "Telegram недоступен (попытка %s/5): %s. Повтор через %ss...",
+                attempt,
+                exc,
+                wait,
+            )
+            await asyncio.sleep(wait)
+
+    logger.error("Не удалось подключиться к api.telegram.org")
+    logger.error(
+        "На сервере может быть блокировка Telegram. "
+        "Добавьте в .env прокси: TELEGRAM_PROXY=socks5://host:port"
+    )
+    raise SystemExit(1) from last_error
+
+
 async def main() -> None:
-    await bot.delete_webhook(drop_pending_updates=True)
-    await start_web_panel(config.WEB_HOST, config.WEB_PORT)
-    logger.info("Telegram-бот и веб-панель запущены")
-    logger.info("Бот: polling | Веб: %s", config.WEB_BASE_URL)
-    await db.start_polling(bot)
+    try:
+        await _connect_telegram()
+        await start_web_panel(config.WEB_HOST, config.WEB_PORT)
+        logger.info("Telegram-бот и веб-панель запущены")
+        logger.info("Бот: polling | Веб: %s", config.WEB_BASE_URL)
+        await db.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 
 def acquire_single_instance_lock():

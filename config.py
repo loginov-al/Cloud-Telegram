@@ -11,3 +11,6 @@ if not token:
 WEB_HOST = os.environ.get("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.environ.get("WEB_PORT", "6090"))
 WEB_BASE_URL = os.environ.get("WEB_BASE_URL", "https://my.cloudtelegram.ru")
+
+TELEGRAM_PROXY = os.environ.get("TELEGRAM_PROXY") or None
+TELEGRAM_TIMEOUT = int(os.environ.get("TELEGRAM_TIMEOUT", "120"))
