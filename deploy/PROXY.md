@@ -1,60 +1,69 @@
-# Telegram заблокирован на RU-VPS — нужен прокси
+# Свой SOCKS5-прокси для Telegram (5 минут)
 
-## 1. Диагностика
+Telegram API заблокирован на RU-VPS. Нужен **зарубежный** сервер.
 
-```bash
-cd ~/myproject/cloud
-bash deploy/check-telegram.sh
-```
+## Шаг 1 — VPS за рубежом
 
-## 2. SOCKS5 на зарубежном VPS (EU/US, ~3$/мес)
+Арендуйте самый дешёвый VPS в **EU / US / Finland** (~200–400 ₽/мес):
+- Hetzner, DigitalOcean, Vultr, Timeweb Cloud (EU), и т.д.
 
-На **прокси-сервере** (не на nsk-1-vm):
+## Шаг 2 — На прокси-VPS
 
 ```bash
-apt update && apt install -y microsocks
-microsocks -i 0.0.0.0 -p 1080 -u botproxy -P YourStrongPass
+ssh root@IP_ПРОКСИ_VPS
+apt update && apt install -y git microsocks
 ```
 
-Откройте порт 1080 в файрволе прокси-сервера.
+Скопируйте скрипт или выполните вручную:
 
-## 3. Настройка бота
+```bash
+PROXY_USER=cloudbot
+PROXY_PASS=MyStr0ngPass123
+PROXY_PORT=1080
 
-На **основном сервере** (`nsk-1-vm`), файл `.env`:
+cat > /etc/systemd/system/microsocks.service <<EOF
+[Unit]
+Description=SOCKS5 proxy
+After=network.target
+[Service]
+ExecStart=/usr/bin/microsocks -i 0.0.0.0 -p ${PROXY_PORT} -u ${PROXY_USER} -P ${PROXY_PASS}
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable --now microsocks
+curl -4 ifconfig.me   # запомните IP
+```
+
+**Откройте порт 1080** в файрволе прокси-VPS.
+
+## Шаг 3 — На основном сервере (nsk-1-vm)
+
+```bash
+nano ~/myproject/cloud/.env
+```
 
 ```
-BOT_TOKEN=ваш_токен
-WEB_HOST=127.0.0.1
-WEB_PORT=6090
-WEB_BASE_URL=https://my.cloudtelegram.ru
-TELEGRAM_PROXY=socks5://botproxy:YourStrongPass@IP_ПРОКСИ:1080
+TELEGRAM_PROXY=socks5://cloudbot:MyStr0ngPass123@IP_ПРОКСИ:1080
 TELEGRAM_TIMEOUT=120
 ```
 
-## 4. Установка aiohttp-socks и перезапуск
-
 ```bash
-cd ~/myproject/cloud
-.venv/bin/pip install aiohttp-socks
 systemctl restart cloudtelegram
 journalctl -u cloudtelegram -f
 ```
 
-Должно появиться: `Telegram через прокси: IP:1080` и `Telegram подключён: @...`
+Ожидайте: `Telegram подключён: @RUcloud1_bot`
 
-## 5. Обновление кода с GitHub
+## Проверка прокси с основного сервера
 
 ```bash
-cd ~/myproject/cloud
-cp .env /tmp/env_backup
-git pull   # или скопируйте файлы из Cloud-Telegram/
-cp /tmp/env_backup .env
-.venv/bin/pip install -r requirements.txt
-systemctl restart cloudtelegram
+curl -x socks5://cloudbot:PASS@IP_ПРОКСИ:1080 --max-time 10 https://api.telegram.org
 ```
 
-## Важно
+Должен ответить (не timeout).
 
-- Веб-панель (`https://my.cloudtelegram.ru`) работает **без** прокси
-- Telegram-бот **требует** прокси на RU-хостинге
-- Либо перенесите бота на VPS за рубежом — тогда прокси не нужен
+## ⚠️ Бесплатные прокси из интернета
+
+Не рекомендуется — нестабильны, могут перехватывать трафик (в т.ч. BOT_TOKEN).

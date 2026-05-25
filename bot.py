@@ -40,19 +40,16 @@ logger = logging.getLogger(__name__)
 def create_bot() -> Bot:
     from aiogram.client.session.aiohttp import AiohttpSession
 
+    session_kwargs: dict = {"timeout": config.TELEGRAM_TIMEOUT}
     if config.TELEGRAM_PROXY:
-        from aiohttp_socks import ProxyConnector
-
-        connector = ProxyConnector.from_url(config.TELEGRAM_PROXY)
-        session = AiohttpSession(connector=connector, timeout=config.TELEGRAM_TIMEOUT)
-        safe_proxy = config.TELEGRAM_PROXY.split("@")[-1]
-        logger.info("Telegram через прокси: %s", safe_proxy)
+        session_kwargs["proxy"] = config.TELEGRAM_PROXY
+        logger.info("Telegram через прокси: %s", config.TELEGRAM_PROXY.split("@")[-1])
     else:
-        session = AiohttpSession(timeout=config.TELEGRAM_TIMEOUT)
         logger.warning(
             "TELEGRAM_PROXY не задан — на RU-VPS Telegram API часто заблокирован"
         )
 
+    session = AiohttpSession(**session_kwargs)
     return Bot(token=config.token, session=session)
 
 
