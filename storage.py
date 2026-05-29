@@ -127,6 +127,55 @@ def find_file(user_id: int, file_id: str) -> dict | None:
     return None
 
 
+def get_user_links(user_id: int) -> list[tuple[str, dict]]:
+    return [(token, link) for token, link in PUBLIC_LINKS.items() if link["user_id"] == user_id]
+
+
+def delete_public_link(user_id: int, link_token: str) -> bool:
+    link = PUBLIC_LINKS.get(link_token)
+    if not link or link["user_id"] != user_id:
+        return False
+    PUBLIC_LINKS.pop(link_token)
+    persist_user(user_id)
+    return True
+
+
+def get_file_category(name: str) -> str:
+    ext = Path(name).suffix.lower().lstrip(".")
+    if ext in {"jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic"}:
+        return "image"
+    if ext in {"mp4", "mov", "avi", "mkv", "webm"}:
+        return "video"
+    if ext in {"mp3", "wav", "ogg", "flac", "aac", "m4a"}:
+        return "audio"
+    if ext in {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "odt"}:
+        return "doc"
+    if ext in {"zip", "rar", "7z", "tar", "gz", "bz2"}:
+        return "archive"
+    if ext in {"py", "js", "ts", "html", "css", "json", "xml", "yaml", "yml", "md", "sh"}:
+        return "code"
+    return "other"
+
+
+def file_icon(name: str) -> str:
+    icons = {
+        "image": "🖼️",
+        "video": "🎬",
+        "audio": "🎵",
+        "doc": "📄",
+        "archive": "📦",
+        "code": "💻",
+        "other": "📁",
+    }
+    return icons.get(get_file_category(name), "📁")
+
+
+def format_datetime(value: datetime | None) -> str:
+    if not value:
+        return "—"
+    return value.strftime("%d.%m.%Y %H:%M")
+
+
 def get_used_storage(user_id: int) -> int:
     total = 0
     for file in get_user_files(user_id):

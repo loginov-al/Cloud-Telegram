@@ -9,15 +9,18 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import config
+import monitoring
 import storage
+from web_panel import create_web_app
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart, StateFilter
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
+    ErrorEvent,
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -31,7 +34,6 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
-from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,8 +56,38 @@ def create_bot() -> Bot:
 
 
 bot = create_bot()
+monitoring.init(bot)
 db = Dispatcher(storage=MemoryStorage())
 LOCK_FILE = Path(__file__).parent / ".bot.lock"
+
+
+@db.errors()
+async def global_error_handler(event: ErrorEvent) -> bool:
+    exc = event.exception
+    msg = str(exc)[:400].replace("<", "&lt;")
+    await monitoring.alert(
+        f"Ошибка бота:\n<code>{msg}</code>",
+        level="error",
+        key=f"handler_{type(exc).__name__}",
+    )
+    return True
+
+
+@db.message(Command("admin"))
+async def admin_panel_cmd(message: Message) -> None:
+    if message.from_user.id not in config.ADMIN_USER_IDS:
+        return
+    if not config.ADMIN_SECRET:
+        await message.answer("⚠️ ADMIN_SECRET не задан в .env на сервере.")
+        return
+    url = f"{config.WEB_BASE_URL}/admin?key={config.ADMIN_SECRET}"
+    await message.answer(
+        f"🛡️ <b>Админ-панель</b>\n\n"
+        f"Мониторинг, журнал событий, алерты в Telegram.\n\n"
+        f"🔗 <code>{url}</code>",
+        parse_mode="HTML",
+    )
+
 
 def get_main_keboard() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
@@ -700,8 +732,19 @@ async def _save_uploaded_file(message: Message) -> dict | None:
         "versions": [],
         "current_version": 1,
     }
+    is_first_file = len(_get_user_files(user_id)) == 0
     _get_user_files(user_id).append(record)
     storage.persist_user(user_id)
+    if is_first_file and user_id not in config.ADMIN_USER_IDS:
+        user = message.from_user
+        asyncio.create_task(
+            monitoring.alert(
+                f"👤 Новый пользователь\n"
+                f"{user.full_name} · ID <code>{user_id}</code>",
+                level="info",
+                key=f"new_user_{user_id}",
+            )
+        )
     return record
 
 
@@ -1091,9 +1134,13 @@ async def web_panel_handler(message: Message):
     await message.answer(
         text=(
             "🌐 <b>Веб-панель</b>\n\n"
-            "Управляйте файлами через браузер: просмотр, скачивание, удаление, ZIP.\n\n"
-            f"🔗 Ссылка (действует 2 часа):\n<code>{url}</code>\n\n"
-            f"🌍 Домен: <code>{config.WEB_BASE_URL}</code>"
+            "Управляйте файлами в браузере — удобно на телефоне:\n"
+            "• 🔍 поиск и фильтры по типу\n"
+            "• 📁 сетка / список\n"
+            "• 🔗 публичные ссылки\n"
+            "• 📊 статистика хранилища\n"
+            "• 👁 превью изображений\n\n"
+            f"🔗 Ссылка (2 часа):\n<code>{url}</code>"
         ),
         reply_markup=get_settings_keyboard(_get_user_settings(message.from_user.id)["notifications"]),
         parse_mode="HTML",
@@ -1308,153 +1355,13 @@ async def share_password_handler(message: Message, state: FSMContext):
     await _send_shared_file(message, token, link, owner_file)
 
 
-# --- Веб-панель ---
-
-def _web_page(title: str, body: str) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{title} — Облачный</title>
-  <style>
-    :root {{ color-scheme: light dark; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #0f1115; color: #eef2ff; }}
-    .wrap {{ max-width: 920px; margin: 0 auto; padding: 24px; }}
-    .card {{ background: #171a21; border: 1px solid #2a3140; border-radius: 16px; padding: 20px; margin-bottom: 16px; }}
-    h1, h2 {{ margin-top: 0; }}
-    table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ padding: 10px 8px; border-bottom: 1px solid #2a3140; text-align: left; }}
-    a {{ color: #8ab4ff; text-decoration: none; }}
-    .btn {{ display: inline-block; background: #2563eb; color: white; border-radius: 10px; padding: 10px 14px; }}
-    .muted {{ color: #94a3b8; }}
-    .bar {{ height: 10px; background: #2a3140; border-radius: 999px; overflow: hidden; margin: 8px 0 16px; }}
-    .bar > span {{ display: block; height: 100%; background: linear-gradient(90deg, #2563eb, #38bdf8); }}
-  </style>
-</head>
-<body><div class="wrap">{body}</div></body>
-</html>"""
-
-
-def _web_require_session(request: web.Request) -> tuple[str | None, dict | None]:
-    token = request.query.get("token") or request.cookies.get("cloud_token")
-    if not token:
-        return None, None
-    session = storage.get_web_session(token)
-    if not session:
-        return token, None
-    return token, session
-
-
-async def _web_index_handler(request: web.Request) -> web.Response:
-    token, session = _web_require_session(request)
-    if not session:
-        body = """
-        <div class="card">
-          <h1>Облачный — веб-панель</h1>
-          <p class="muted">Получите ссылку для входа в боте: ⚙️ Настройки → 🌐 Веб-панель</p>
-          <p>Ссылка действует 2 часа и привязана к вашему Telegram-аккаунту.</p>
-        </div>"""
-        return web.Response(text=_web_page("Вход", body), content_type="text/html")
-
-    user_id = session["user_id"]
-    files = storage.get_user_files(user_id)
-    used = storage.get_used_storage(user_id)
-    percent = min(used * 100 // storage.STORAGE_LIMIT, 100) if storage.STORAGE_LIMIT else 0
-
-    rows = []
-    for file in files:
-        versions = len(file.get("versions", []))
-        version_line = f"+{versions} верс." if versions else "—"
-        rows.append(
-            f"<tr>"
-            f"<td>{file['name']}</td>"
-            f"<td>{storage.format_size(file['size'])}</td>"
-            f"<td>{version_line}</td>"
-            f"<td><a href='/download?token={token}&file_id={file['id']}'>Скачать</a></td>"
-            f"<td><a href='/delete?token={token}&file_id={file['id']}' onclick=\"return confirm('Удалить файл?')\">Удалить</a></td>"
-            f"</tr>"
-        )
-
-    table = (
-        "<table><tr><th>Файл</th><th>Размер</th><th>Версии</th><th></th><th></th></tr>"
-        + "".join(rows)
-        + "</table>"
-        if rows
-        else "<p class='muted'>Файлов пока нет. Загрузите их через Telegram-бота.</p>"
-    )
-
-    body = f"""
-    <div class="card">
-      <h1>🌐 Веб-панель</h1>
-      <p class="muted">Пользователь ID: {user_id}</p>
-      <div class="bar"><span style="width:{percent}%"></span></div>
-      <p>Занято: <b>{storage.format_size(used)}</b> / {storage.format_size(storage.STORAGE_LIMIT)} · Файлов: <b>{len(files)}</b></p>
-    </div>
-    <div class="card">
-      <h2>Файлы</h2>
-      {table}
-    </div>
-    <div class="card">
-      <a class="btn" href="/download-all?token={token}">📦 Скачать всё ZIP</a>
-    </div>
-    """
-    response = web.Response(text=_web_page("Панель", body), content_type="text/html")
-    response.set_cookie("cloud_token", token, max_age=7200, httponly=True)
-    return response
-
-
-async def _web_download_handler(request: web.Request) -> web.Response:
-    _, session = _web_require_session(request)
-    if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла. Получите новую ссылку в боте.")
-
-    file = storage.find_file(session["user_id"], request.query.get("file_id", ""))
-    if not file:
-        raise web.HTTPNotFound(text="Файл не найден")
-
-    path = Path(file["path"])
-    if not path.exists():
-        raise web.HTTPNotFound(text="Файл отсутствует на сервере")
-
-    return web.FileResponse(path, headers={"Content-Disposition": f'attachment; filename="{file["name"]}"'})
-
-
-async def _web_download_all_handler(request: web.Request) -> web.Response:
-    _, session = _web_require_session(request)
-    if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла.")
-
-    zip_path = storage.create_user_zip(session["user_id"])
-    if not zip_path:
-        raise web.HTTPNotFound(text="Нет файлов для архивации")
-
-    return web.FileResponse(zip_path, headers={"Content-Disposition": 'attachment; filename="cloud_files.zip"'})
-
-
-async def _web_delete_handler(request: web.Request) -> web.Response:
-    token, session = _web_require_session(request)
-    if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла.")
-
-    file_id = request.query.get("file_id", "")
-    if not storage.delete_file_record(session["user_id"], file_id):
-        raise web.HTTPNotFound(text="Файл не найден")
-
-    raise web.HTTPFound(location=f"/?token={token}")
-
-
-def _create_web_app() -> web.Application:
-    app = web.Application()
-    app.router.add_get("/", _web_index_handler)
-    app.router.add_get("/download", _web_download_handler)
-    app.router.add_get("/download-all", _web_download_all_handler)
-    app.router.add_get("/delete", _web_delete_handler)
-    return app
+# --- Веб-панель (web_panel.py) ---
 
 
 async def start_web_panel(host: str, port: int) -> None:
-    app = _create_web_app()
+    from aiohttp import web
+
+    app = create_web_app()
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host, port)
@@ -1464,16 +1371,29 @@ async def start_web_panel(host: str, port: int) -> None:
 async def main() -> None:
     await start_web_panel(config.WEB_HOST, config.WEB_PORT)
     logger.info("Веб-панель: %s", config.WEB_BASE_URL)
+    if config.ADMIN_SECRET:
+        logger.info("Админ-панель: %s/admin", config.WEB_BASE_URL)
+    if config.ADMIN_USER_IDS:
+        logger.info("Админы Telegram: %s", config.ADMIN_USER_IDS)
+
+    asyncio.create_task(monitoring.health_loop())
 
     try:
         while True:
             try:
                 await bot.delete_webhook(drop_pending_updates=True)
                 me = await bot.get_me()
+                monitoring.set_telegram_status(True)
                 logger.info("Telegram подключён: @%s — запуск polling", me.username)
+                await monitoring.alert(
+                    f"🚀 Бот запущен\n@{me.username} · {config.WEB_BASE_URL}",
+                    level="info",
+                    key="startup",
+                )
                 await db.start_polling(bot)
                 return
             except Exception as exc:
+                monitoring.set_telegram_status(False, str(exc))
                 logger.error("Telegram недоступен: %s", exc)
                 logger.error("Диагностика: bash deploy/check-telegram.sh")
                 logger.error("Решение: добавьте в .env → TELEGRAM_PROXY=socks5://IP:1080")

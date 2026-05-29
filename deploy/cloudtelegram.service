@@ -9,6 +9,7 @@ WorkingDirectory=/root/myproject/cloud
 ExecStart=/root/myproject/cloud/.venv/bin/python bot.py
 Restart=always
 RestartSec=5
+EnvironmentFile=-/root/myproject/cloud/.env
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
