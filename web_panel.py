@@ -5,11 +5,23 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from urllib.parse import urlparse
+
 import config
 import storage
+from docs_content import docs_html
 from aiohttp import web
 
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+
+def _docs_host() -> str:
+    return urlparse(config.DOCS_BASE_URL).netloc.split(":")[0].lower()
+
+
+def _is_docs_host(request: web.Request) -> bool:
+    host = request.host.split(":")[0].lower()
+    return host == _docs_host()
 
 
 def _require_session(request: web.Request) -> tuple[str | None, dict | None]:
@@ -114,25 +126,53 @@ def _storage_stats(user_id: int) -> dict:
 
 
 def _login_page() -> str:
-    body = """
+    bot = f"https://t.me/{config.BOT_USERNAME}"
+    docs = config.DOCS_BASE_URL
+    body = f"""
+    <nav class="portal-nav">
+      <span class="brand">☁️ Облачный</span>
+      <a href="{docs}">📖 Документация</a>
+      <a href="{bot}">Telegram</a>
+    </nav>
     <div class="hero">
       <div class="logo">☁️</div>
       <h1>Облачный</h1>
-      <p class="muted">Управляйте файлами из браузера — на телефоне и компьютере.</p>
+      <p class="muted">Личное хранилище в Telegram + веб-панель</p>
+      <a class="btn btn-primary" href="{bot}">Открыть бота</a>
     </div>
     <div class="card">
-      <h2>Как войти</h2>
+      <h2>🌐 Войти в веб-панель</h2>
       <ol class="steps">
         <li>Откройте бота в Telegram</li>
-        <li>⚙️ Настройки → 🌐 Веб-панель</li>
-        <li>Перейдите по ссылке (действует 2 часа)</li>
+        <li><b>⚙️ Настройки → 🌐 Веб-панель</b></li>
+        <li>Перейдите по персональной ссылке (2 часа)</li>
       </ol>
+      <p class="muted">Панель не требует пароля — доступ только по ссылке из бота.</p>
+    </div>
+    <div class="card">
+      <h2>📖 Документация</h2>
+      <p>Инструкции по загрузке файлов, ссылкам, inline-режиму и FAQ.</p>
+      <a class="btn btn-ghost" href="{docs}">Читать на {docs.replace('https://', '')} →</a>
     </div>"""
-    return _page("Вход", body, token=None)
+    return _page("Портал", body, token=None, portal=True)
 
 
-def _page(title: str, body: str, token: str | None, extra_head: str = "", extra_script: str = "") -> str:
+def _docs_page() -> str:
+    bot = f"https://t.me/{config.BOT_USERNAME}"
+    panel = config.WEB_BASE_URL
+    body = f"""
+    <nav class="portal-nav">
+      <span class="brand">☁️ Облачный — Docs</span>
+      <a href="{panel}">🌐 Панель</a>
+      <a href="{bot}">Telegram</a>
+    </nav>
+    {docs_html(compact=False)}"""
+    return _page("Документация", body, token=None, portal=True)
+
+
+def _page(title: str, body: str, token: str | None, extra_head: str = "", extra_script: str = "", portal: bool = False) -> str:
     token_attr = f'data-token="{token}"' if token else ""
+    portal_cls = " portal" if portal else ""
     return f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -145,7 +185,7 @@ def _page(title: str, body: str, token: str | None, extra_head: str = "", extra_
   <style>{_CSS}</style>
   {extra_head}
 </head>
-<body {token_attr}>
+<body class="app-root{portal_cls}" {token_attr}>
   <div id="toast" class="toast" hidden></div>
   <div class="app">{body}</div>
   <script>{_JS}</script>
@@ -273,6 +313,14 @@ table.files-table tr.hidden { display: none; }
   background: var(--surface2); border: 1px solid var(--border); padding: 10px 20px; border-radius: 999px;
   font-size: 0.9rem; z-index: 300; box-shadow: 0 8px 32px rgba(0,0,0,.4); white-space: nowrap; }
 @media (min-width: 769px) { .toast { bottom: 24px; } }
+body.portal .app { padding-bottom: 24px; }
+.portal-nav { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+.portal-nav .brand { font-weight: 700; font-size: 1.05rem; margin-right: auto; color: var(--text); }
+.portal-nav a { color: var(--muted); font-size: 0.9rem; }
+.portal-nav a.active { color: var(--accent); }
+.doc-section p { margin: 8px 0; line-height: 1.65; }
+.doc-section ul.steps { list-style: disc; }
+.doc-section code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
 """
 
 
@@ -466,6 +514,7 @@ def _dashboard_page(token: str, user_id: int) -> str:
       <button class="nav-item active" data-tab="files">📁 Файлы</button>
       <button class="nav-item" data-tab="links">🔗 Ссылки</button>
       <button class="nav-item" data-tab="stats">📊 Статистика</button>
+      <button class="nav-item" data-tab="help">📖 Справка</button>
     </nav>
 
     <div class="tab-panel active" data-tab="files">
@@ -514,10 +563,16 @@ def _dashboard_page(token: str, user_id: int) -> str:
       <div class="card" style="margin-top:12px"><h2>По типам</h2>{cat_rows}</div>
     </div>
 
+    <div class="tab-panel" data-tab="help">
+      {docs_html(compact=True)}
+      <p style="margin-top:12px"><a href="{config.DOCS_BASE_URL}" target="_blank" rel="noopener">Полная документация →</a></p>
+    </div>
+
     <nav class="bottom-nav">
       <button class="nav-item active" data-tab="files"><span class="ico">📁</span>Файлы</button>
       <button class="nav-item" data-tab="links"><span class="ico">🔗</span>Ссылки</button>
-      <button class="nav-item" data-tab="stats"><span class="ico">📊</span>Статистика</button>
+      <button class="nav-item" data-tab="stats"><span class="ico">📊</span>Стат</button>
+      <button class="nav-item" data-tab="help"><span class="ico">📖</span>Справка</button>
     </nav>
 
     <div id="modal" class="modal" hidden>
@@ -528,7 +583,14 @@ def _dashboard_page(token: str, user_id: int) -> str:
     return _page("Панель", body, token)
 
 
+async def docs_handler(request: web.Request) -> web.Response:
+    raise web.HTTPFound(location=config.DOCS_BASE_URL)
+
+
 async def index_handler(request: web.Request) -> web.Response:
+    if _is_docs_host(request):
+        return web.Response(text=_docs_page(), content_type="text/html")
+
     token, session = _require_session(request)
     if not session:
         return web.Response(text=_login_page(), content_type="text/html")
@@ -632,6 +694,7 @@ def create_web_app() -> web.Application:
 
     app = web.Application()
     app.router.add_get("/", index_handler)
+    app.router.add_get("/docs", docs_handler)
     app.router.add_get("/download", download_handler)
     app.router.add_get("/preview", preview_handler)
     app.router.add_get("/download-all", download_all_handler)

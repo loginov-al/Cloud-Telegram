@@ -16,7 +16,8 @@ token = _raw_token
 
 WEB_HOST = os.environ.get("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.environ.get("WEB_PORT", "6090"))
-WEB_BASE_URL = os.environ.get("WEB_BASE_URL", "https://my.cloudtelegram.ru")
+WEB_BASE_URL = os.environ.get("WEB_BASE_URL", "https://my.cloudtelegram.ru").rstrip("/")
+DOCS_BASE_URL = os.environ.get("DOCS_BASE_URL", "https://dev.cloudtelegram.ru").rstrip("/")
 
 _raw_proxy = (os.environ.get("TELEGRAM_PROXY") or "").strip() or None
 # socks5h — DNS через прокси (важно на RU-VPS, где api.telegram.org заблокирован)
