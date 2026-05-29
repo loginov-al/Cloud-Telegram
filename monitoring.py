@@ -1,7 +1,5 @@
 """Мониторинг системы и алерты админу в Telegram."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import os
@@ -9,12 +7,11 @@ import shutil
 import time
 from collections import deque
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from aiogram import Bot
 
 import config
-
-if TYPE_CHECKING:
-    from aiogram import Bot
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +23,7 @@ _telegram_ok = True
 _telegram_errors = 0
 
 
-def init(bot: "Bot") -> None:
+def init(bot: Bot) -> None:
     global _bot
     _bot = bot
 

@@ -145,7 +145,7 @@ def _login_page() -> str:
       <ol class="steps">
         <li>Откройте бота в Telegram</li>
         <li><b>⚙️ Настройки → 🌐 Веб-панель</b></li>
-        <li>Перейдите по персональной ссылке (2 часа)</li>
+        <li>Перейдите по персональной ссылке — она постоянная</li>
       </ol>
       <p class="muted">Панель не требует пароля — доступ только по ссылке из бота.</p>
     </div>
@@ -196,9 +196,10 @@ def _page(title: str, body: str, token: str | None, extra_head: str = "", extra_
 
 _CSS = """
 :root {
-  --bg: #0b0f19;
+  --bg: #0a0e17;
+  --bg2: #0f1520;
   --surface: #141925;
-  --surface2: #1c2333;
+  --surface2: #1a2233;
   --border: #2a3347;
   --text: #eef2ff;
   --muted: #94a3b8;
@@ -211,13 +212,17 @@ _CSS = """
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text);
+html, body { margin: 0; min-height: 100%;
+  background: var(--bg);
+  background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59,130,246,.12), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(6,182,212,.08), transparent);
+  color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
-.app { max-width: 960px; margin: 0 auto; padding: 16px 16px calc(var(--nav-h) + var(--safe-b) + 16px); }
+.app { max-width: 960px; margin: 0 auto; padding: 12px 16px calc(var(--nav-h) + var(--safe-b) + 16px); }
 @media (min-width: 769px) {
-  .app { padding-bottom: 24px; }
+  .app { padding: 20px 24px 32px; }
   .bottom-nav { display: none !important; }
   .sidebar-nav { display: flex !important; }
 }
@@ -229,31 +234,76 @@ h2 { font-size: 1.1rem; margin: 0 0 12px; }
   padding: 16px; margin-bottom: 12px; }
 .muted { color: var(--muted); font-size: 0.9rem; }
 .steps { margin: 0; padding-left: 20px; line-height: 1.8; }
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-bottom: 16px; flex-wrap: wrap; }
-.topbar h1 { margin: 0; font-size: 1.25rem; }
-.storage-mini { flex: 1; min-width: 140px; }
-.bar { height: 8px; background: var(--surface2); border-radius: 999px; overflow: hidden; margin-top: 6px; }
-.bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
-.search { flex: 1; min-width: 160px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
-  background: var(--surface2); color: var(--text); font-size: 16px; }
-.search:focus { outline: 2px solid var(--accent); border-color: transparent; }
-select.sort, .chip { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border);
-  background: var(--surface2); color: var(--text); font-size: 14px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.chip { cursor: pointer; user-select: none; transition: .15s; }
+
+.header-card {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
+  border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px);
+  padding: 16px 18px; margin-bottom: 14px;
+}
+.header-top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.header-logo {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+  box-shadow: 0 4px 16px rgba(59,130,246,.25);
+}
+.header-title { flex: 1; min-width: 0; }
+.header-title h1 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
+.header-sub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.storage-block { }
+.storage-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.storage-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.storage-value { font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar { height: 10px; background: rgba(0,0,0,.35); border-radius: 999px; overflow: hidden; }
+.bar > span {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width .4s ease; min-width: 0;
+  box-shadow: 0 0 12px rgba(59,130,246,.4);
+}
+.bar.warn > span { background: linear-gradient(90deg, #eab308, #f97316); box-shadow: 0 0 12px rgba(234,179,8,.35); }
+.bar.danger > span { background: linear-gradient(90deg, #ef4444, #f97316); box-shadow: 0 0 12px rgba(239,68,68,.35); }
+
+.files-toolbar {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: stretch;
+}
+.files-toolbar .search { flex: 1 1 180px; }
+.toolbar-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.search {
+  padding: 10px 14px 10px 36px; border-radius: 11px; border: 1px solid var(--border);
+  background: var(--surface2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'/%3E%3C/svg%3E") 12px center no-repeat;
+  color: var(--text); font-size: 16px;
+}
+.search:focus { outline: 2px solid var(--accent); border-color: transparent; background-color: var(--surface); }
+select.sort, .chip {
+  padding: 9px 12px; border-radius: 11px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text); font-size: 14px;
+}
+.chips {
+  display: flex; gap: 6px; margin-bottom: 12px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; padding-bottom: 2px;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chip { cursor: pointer; user-select: none; transition: .15s; white-space: nowrap; flex-shrink: 0; font-size: 13px; }
+.chip:hover { border-color: var(--accent); }
 .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.view-toggle { display: flex; gap: 4px; }
-.view-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--surface2); color: var(--text); cursor: pointer; font-size: 16px; }
-.view-btn.active { background: var(--accent); border-color: var(--accent); }
+.view-toggle { display: flex; gap: 2px; background: var(--surface2); border-radius: 10px; padding: 3px; border: 1px solid var(--border); }
+.view-btn {
+  width: 34px; height: 34px; border-radius: 8px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer; font-size: 15px;
+  transition: .15s;
+}
+.view-btn.active { background: var(--accent); color: #fff; }
 .file-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 @media (min-width: 480px) { .file-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 769px) { .file-grid.cols-list { display: block; } }
-.file-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s; }
-.file-card:hover { border-color: var(--accent); }
+.file-card {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.file-card:hover { border-color: rgba(59,130,246,.5); box-shadow: 0 4px 20px rgba(0,0,0,.25); transform: translateY(-1px); }
 .file-card.hidden { display: none !important; }
 .file-head { display: flex; gap: 10px; align-items: flex-start; }
 .file-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
@@ -284,25 +334,41 @@ table.files-table tr.hidden { display: none; }
 .badge-lock { background: rgba(148,163,184,.15); color: #cbd5e1; }
 .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 @media (min-width: 480px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
-.stat-box { background: var(--surface2); border-radius: 12px; padding: 14px; text-align: center; }
+.stat-box { background: linear-gradient(145deg, var(--surface2), var(--surface)); border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: center; }
 .stat-val { font-size: 1.4rem; font-weight: 700; }
 .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
 .cat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
 .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + var(--safe-b));
-  padding-bottom: var(--safe-b); background: var(--surface); border-top: 1px solid var(--border);
-  display: flex; z-index: 100; }
+  padding-bottom: var(--safe-b); background: rgba(20,25,37,.92); backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border); display: flex; z-index: 100; }
 .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 2px; color: var(--muted); font-size: 0.65rem; cursor: pointer; border: none; background: none;
   padding: 8px 0; -webkit-tap-highlight-color: transparent; }
 .nav-item .ico { font-size: 1.35rem; }
 .nav-item.active { color: var(--accent); }
-.sidebar-nav { display: none; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-.sidebar-nav .nav-item { flex: unset; flex-direction: row; font-size: 0.9rem; padding: 10px 16px;
-  border-radius: 10px; border: 1px solid var(--border); background: var(--surface2); }
-.sidebar-nav .nav-item.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-.empty { text-align: center; padding: 32px 16px; color: var(--muted); }
-.empty-icon { font-size: 48px; margin-bottom: 8px; }
-.fab-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sidebar-nav {
+  display: none; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 5px;
+}
+.sidebar-nav .nav-item {
+  flex: 1; min-width: 0; flex-direction: row; font-size: 0.85rem; padding: 10px 12px;
+  border-radius: 9px; border: none; background: transparent; color: var(--muted);
+  justify-content: center;
+}
+.sidebar-nav .nav-item.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(59,130,246,.3); }
+.empty {
+  text-align: center; padding: 40px 20px 48px; color: var(--muted);
+  grid-column: 1 / -1;
+}
+.empty-visual {
+  width: 88px; height: 88px; margin: 0 auto 16px; border-radius: 50%;
+  background: linear-gradient(145deg, rgba(59,130,246,.15), rgba(6,182,212,.08));
+  border: 1px solid rgba(59,130,246,.2);
+  display: flex; align-items: center; justify-content: center; font-size: 40px;
+}
+.empty h3 { margin: 0 0 6px; color: var(--text); font-size: 1.05rem; font-weight: 600; }
+.empty p { margin: 0 0 16px; font-size: 0.9rem; line-height: 1.5; }
+.empty .btn { margin-top: 4px; }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 200; display: flex;
   align-items: center; justify-content: center; padding: 16px; }
 .modal[hidden] { display: none; }
@@ -321,6 +387,12 @@ body.portal .app { padding-bottom: 24px; }
 .doc-section p { margin: 8px 0; line-height: 1.65; }
 .doc-section ul.steps { list-style: disc; }
 .doc-section code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+@media (max-width: 520px) {
+  .files-toolbar { flex-direction: column; }
+  .files-toolbar .toolbar-actions { width: 100%; flex-wrap: wrap; }
+  .files-toolbar .search { width: 100%; }
+  .toolbar-actions .sort { flex: 1; min-width: 120px; }
+}
 """
 
 
@@ -436,6 +508,13 @@ def _dashboard_page(token: str, user_id: int) -> str:
     stats = _storage_stats(user_id)
     files = _serialize_files(user_id)
     links = _serialize_links(user_id)
+    bot_url = f"https://t.me/{config.BOT_USERNAME}"
+
+    bar_cls = "bar"
+    if stats["percent"] >= 90:
+        bar_cls += " danger"
+    elif stats["percent"] >= 70:
+        bar_cls += " warn"
 
     cards_html = ""
     for f in files:
@@ -477,8 +556,22 @@ def _dashboard_page(token: str, user_id: int) -> str:
           </td>
         </tr>"""
 
-    files_empty = '<div class="empty"><div class="empty-icon">📭</div><p>Файлов нет</p><p class="muted">Загрузите через Telegram-бота</p></div>'
+    files_empty = f"""
+    <div class="empty">
+      <div class="empty-visual">☁️</div>
+      <h3>Облако пустое</h3>
+      <p>Отправьте файл боту в Telegram —<br>он появится здесь автоматически</p>
+      <a class="btn btn-primary" href="{bot_url}">Открыть @{config.BOT_USERNAME}</a>
+    </div>"""
     files_content = cards_html if files else files_empty
+
+    table_section = ""
+    if files:
+        table_section = f"""
+      <div id="file-table" class="table-wrap" hidden>
+        <table class="files-table"><thead><tr><th>Файл</th><th>Размер</th><th>Дата</th><th></th></tr></thead>
+        <tbody>{table_rows}</tbody></table>
+      </div>"""
 
     links_html = ""
     for link in links:
@@ -494,7 +587,13 @@ def _dashboard_page(token: str, user_id: int) -> str:
             <button class="btn btn-danger btn-sm" onclick="deleteLink('{link['token']}')">🗑</button>
           </div>
         </div>"""
-    links_content = links_html if links else '<div class="empty"><div class="empty-icon">🔗</div><p>Нет публичных ссылок</p></div>'
+    links_content = links_html if links else f"""
+    <div class="empty">
+      <div class="empty-visual">🔗</div>
+      <h3>Нет публичных ссылок</h3>
+      <p>Создайте ссылку на файл через бота:<br><b>Файл → Поделиться</b></p>
+      <a class="btn btn-ghost" href="{bot_url}">Перейти в бота</a>
+    </div>"""
 
     cat_rows = "".join(
         f'<div class="cat-row"><span>{storage.file_icon(k)} {k}</span><span>{v}</span></div>'
@@ -502,13 +601,23 @@ def _dashboard_page(token: str, user_id: int) -> str:
     ) or '<p class="muted">Нет данных</p>'
 
     body = f"""
-    <div class="topbar">
-      <h1>☁️ Облачный</h1>
-      <div class="storage-mini">
-        <div class="muted" style="font-size:.75rem">{stats['used_fmt']} / {stats['limit_fmt']}</div>
-        <div class="bar"><span style="width:{stats['percent']}%"></span></div>
+    <header class="header-card">
+      <div class="header-top">
+        <div class="header-logo">☁️</div>
+        <div class="header-title">
+          <h1>Облачный</h1>
+          <div class="header-sub">{stats['files_count']} файлов · {stats['links_count']} ссылок</div>
+        </div>
+        <a class="btn btn-ghost btn-sm" href="{bot_url}" title="Telegram">📱</a>
       </div>
-    </div>
+      <div class="storage-block">
+        <div class="storage-row">
+          <span class="storage-label">Хранилище</span>
+          <span class="storage-value">{stats['used_fmt']} / {stats['limit_fmt']}</span>
+        </div>
+        <div class="{bar_cls}"><span style="width:{max(stats['percent'], 2 if stats['used'] else 0)}%"></span></div>
+      </div>
+    </header>
 
     <nav class="sidebar-nav">
       <button class="nav-item active" data-tab="files">📁 Файлы</button>
@@ -518,35 +627,32 @@ def _dashboard_page(token: str, user_id: int) -> str:
     </nav>
 
     <div class="tab-panel active" data-tab="files">
-      <div class="fab-row">
-        <a class="btn btn-primary" href="/download-all?token={token}">📦 ZIP всё</a>
-      </div>
-      <div class="toolbar">
-        <input class="search" id="search" type="search" placeholder="🔍 Поиск файлов..." autocomplete="off">
-        <select class="sort" id="sort">
-          <option value="date-desc">Новые первые</option>
-          <option value="name">По имени</option>
-          <option value="size">По размеру</option>
-        </select>
-        <div class="view-toggle">
-          <button class="view-btn active" data-view="grid" title="Сетка">▦</button>
-          <button class="view-btn" data-view="list" title="Список">☰</button>
+      <div class="files-toolbar">
+        <input class="search" id="search" type="search" placeholder="Поиск файлов..." autocomplete="off">
+        <div class="toolbar-actions">
+          <select class="sort" id="sort">
+            <option value="date-desc">Новые первые</option>
+            <option value="name">По имени</option>
+            <option value="size">По размеру</option>
+          </select>
+          <div class="view-toggle">
+            <button class="view-btn active" data-view="grid" title="Сетка">▦</button>
+            <button class="view-btn" data-view="list" title="Список">☰</button>
+          </div>
+          <a class="btn btn-primary btn-sm" href="/download-all?token={token}">📦 ZIP</a>
         </div>
       </div>
       <div class="chips">
         <span class="chip active" data-cat="all">Все</span>
-        <span class="chip" data-cat="image">🖼️</span>
-        <span class="chip" data-cat="doc">📄</span>
-        <span class="chip" data-cat="video">🎬</span>
-        <span class="chip" data-cat="audio">🎵</span>
-        <span class="chip" data-cat="archive">📦</span>
-        <span class="chip" data-cat="code">💻</span>
+        <span class="chip" data-cat="image">🖼 Фото</span>
+        <span class="chip" data-cat="doc">📄 Док</span>
+        <span class="chip" data-cat="video">🎬 Видео</span>
+        <span class="chip" data-cat="audio">🎵 Аудио</span>
+        <span class="chip" data-cat="archive">📦 Архив</span>
+        <span class="chip" data-cat="code">💻 Код</span>
       </div>
       <div id="file-grid" class="file-grid">{files_content}</div>
-      <div id="file-table" class="table-wrap" hidden>
-        <table class="files-table"><thead><tr><th>Файл</th><th>Размер</th><th>Дата</th><th></th></tr></thead>
-        <tbody>{table_rows}</tbody></table>
-      </div>
+      {table_section}
     </div>
 
     <div class="tab-panel" data-tab="links">
@@ -597,14 +703,14 @@ async def index_handler(request: web.Request) -> web.Response:
 
     html = _dashboard_page(token, session["user_id"])
     response = web.Response(text=html, content_type="text/html")
-    response.set_cookie("cloud_token", token, max_age=7200, httponly=True, samesite="Lax")
+    response.set_cookie("cloud_token", token, max_age=315360000, httponly=True, samesite="Lax")
     return response
 
 
 async def download_handler(request: web.Request) -> web.Response:
     _, session = _require_session(request)
     if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла. Получите новую ссылку в боте.")
+        raise web.HTTPUnauthorized(text="Недействительная ссылка. Получите новую в боте: ⚙️ Настройки → 🌐 Веб-панель.")
 
     file = storage.find_file(session["user_id"], request.query.get("file_id", ""))
     if not file:
@@ -620,7 +726,7 @@ async def download_handler(request: web.Request) -> web.Response:
 async def preview_handler(request: web.Request) -> web.Response:
     _, session = _require_session(request)
     if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла.")
+        raise web.HTTPUnauthorized(text="Недействительная ссылка.")
 
     file = storage.find_file(session["user_id"], request.query.get("file_id", ""))
     if not file:
@@ -636,7 +742,7 @@ async def preview_handler(request: web.Request) -> web.Response:
 async def download_all_handler(request: web.Request) -> web.Response:
     _, session = _require_session(request)
     if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла.")
+        raise web.HTTPUnauthorized(text="Недействительная ссылка.")
 
     zip_path = storage.create_user_zip(session["user_id"])
     if not zip_path:
@@ -648,7 +754,7 @@ async def download_all_handler(request: web.Request) -> web.Response:
 async def delete_handler(request: web.Request) -> web.Response:
     token, session = _require_session_post(request)
     if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла.")
+        raise web.HTTPUnauthorized(text="Недействительная ссылка.")
 
     try:
         data = await request.json()
@@ -664,7 +770,7 @@ async def delete_handler(request: web.Request) -> web.Response:
 async def delete_link_handler(request: web.Request) -> web.Response:
     _, session = _require_session_post(request)
     if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла.")
+        raise web.HTTPUnauthorized(text="Недействительная ссылка.")
 
     try:
         data = await request.json()
@@ -680,7 +786,7 @@ async def delete_link_handler(request: web.Request) -> web.Response:
 async def delete_legacy_handler(request: web.Request) -> web.Response:
     token, session = _require_session(request)
     if not session:
-        raise web.HTTPUnauthorized(text="Сессия истекла.")
+        raise web.HTTPUnauthorized(text="Недействительная ссылка.")
 
     file_id = request.query.get("file_id", "")
     if not storage.delete_file_record(session["user_id"], file_id):

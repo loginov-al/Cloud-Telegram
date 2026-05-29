@@ -9,6 +9,7 @@ from pathlib import Path
 STORAGE_LIMIT = 5 * 1024 ** 3
 DATA_DIR = Path(__file__).parent / "data" / "users"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+WEB_SESSIONS_FILE = Path(__file__).parent / "data" / "web_sessions.json"
 
 USER_FILES: dict[int, list[dict]] = {}
 PUBLIC_LINKS: dict[str, dict] = {}
@@ -86,24 +87,49 @@ def persist_user(user_id: int) -> None:
 
 
 def load_all_users() -> None:
-    if not DATA_DIR.exists():
-        return
-    for user_dir in DATA_DIR.iterdir():
-        if not user_dir.is_dir():
-            continue
-        meta_file = user_dir / "meta.json"
-        if not meta_file.exists():
-            continue
-        try:
-            user_id = int(user_dir.name)
-            payload = json.loads(meta_file.read_text(encoding="utf-8"))
-        except (ValueError, json.JSONDecodeError):
-            continue
+    if DATA_DIR.exists():
+        for user_dir in DATA_DIR.iterdir():
+            if not user_dir.is_dir():
+                continue
+            meta_file = user_dir / "meta.json"
+            if not meta_file.exists():
+                continue
+            try:
+                user_id = int(user_dir.name)
+                payload = json.loads(meta_file.read_text(encoding="utf-8"))
+            except (ValueError, json.JSONDecodeError):
+                continue
 
-        USER_FILES[user_id] = [_deserialize_file(item) for item in payload.get("files", [])]
-        USER_SETTINGS[user_id] = payload.get("settings", DEFAULT_SETTINGS.copy())
-        for token, link_data in payload.get("links", {}).items():
-            PUBLIC_LINKS[token] = _deserialize_link(link_data)
+            USER_FILES[user_id] = [_deserialize_file(item) for item in payload.get("files", [])]
+            USER_SETTINGS[user_id] = payload.get("settings", DEFAULT_SETTINGS.copy())
+            for token, link_data in payload.get("links", {}).items():
+                PUBLIC_LINKS[token] = _deserialize_link(link_data)
+    load_web_sessions()
+
+
+def load_web_sessions() -> None:
+    if not WEB_SESSIONS_FILE.exists():
+        return
+    try:
+        raw = json.loads(WEB_SESSIONS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    for token, data in raw.items():
+        session = dict(data)
+        if session.get("expires_at"):
+            session["expires_at"] = datetime.fromisoformat(session["expires_at"])
+        WEB_SESSIONS[token] = session
+
+
+def persist_web_sessions() -> None:
+    WEB_SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {}
+    for token, session in WEB_SESSIONS.items():
+        item = dict(session)
+        if isinstance(item.get("expires_at"), datetime):
+            item["expires_at"] = item["expires_at"].isoformat()
+        payload[token] = item
+    WEB_SESSIONS_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _get_user_dir(user_id: int) -> Path:
@@ -284,12 +310,23 @@ def generate_qr_bytes(url: str) -> BytesIO:
     return buffer
 
 
-def create_web_session(user_id: int, hours: int = 2) -> str:
+def create_web_session(user_id: int) -> str:
+    """Постоянная персональная ссылка — один токен на пользователя."""
+    now = datetime.now()
+    for token, session in WEB_SESSIONS.items():
+        if session["user_id"] != user_id:
+            continue
+        expires = session.get("expires_at")
+        if expires and expires < now:
+            continue
+        if expires:
+            session.pop("expires_at", None)
+            persist_web_sessions()
+        return token
+
     token = secrets.token_urlsafe(24)
-    WEB_SESSIONS[token] = {
-        "user_id": user_id,
-        "expires_at": datetime.now() + timedelta(hours=hours),
-    }
+    WEB_SESSIONS[token] = {"user_id": user_id}
+    persist_web_sessions()
     return token
 
 
@@ -297,8 +334,10 @@ def get_web_session(token: str) -> dict | None:
     session = WEB_SESSIONS.get(token)
     if not session:
         return None
-    if session["expires_at"] < datetime.now():
+    expires_at = session.get("expires_at")
+    if expires_at and expires_at < datetime.now():
         WEB_SESSIONS.pop(token, None)
+        persist_web_sessions()
         return None
     return session
 

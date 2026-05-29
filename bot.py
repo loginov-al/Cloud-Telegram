@@ -118,22 +118,15 @@ async def command_start_handler(message: Message, state: FSMContext):
     files_count = len(_get_user_files(message.from_user.id))
     percent = used * 100 // STORAGE_LIMIT if STORAGE_LIMIT else 0
     name = message.from_user.first_name or message.from_user.full_name
-    me = await bot.get_me()
-    bot_username = me.username or "бот"
 
     await message.answer(
         text=(
-            f"👋 Привет, <b>{name}</b>!\n"
-            f"Добро пожаловать в <b>Облачный</b> — твоё личное хранилище файлов в Telegram.\n\n"
-            f"💾 <b>Хранилище</b>\n"
-            f"{_storage_bar(used, STORAGE_LIMIT)} {percent}%\n"
-            f"Свободно: <b>{_format_size(free)}</b> · Занято: <b>{_format_size(used)}</b> · Лимит: <b>{_format_size(STORAGE_LIMIT)}</b>\n"
-            f"📁 Файлов: <b>{files_count}</b>\n\n"
-            f"🚀 Быстрая загрузка и скачивание\n"
-            f"🔗 Публичные ссылки с паролем и сроком\n"
-            f"📱 Inline: @{bot_username} имя_файла\n"
-            f"🔒 Безопасное хранение на сервере\n\n"
-            f"Выберите раздел на клавиатуре ниже 👇"
+            f"👋 Привет, <b>{name}</b>!\n\n"
+            f"💾 {_storage_bar(used, STORAGE_LIMIT)} {percent}%\n"
+            f"Свободно <b>{_format_size(free)}</b> · Файлов: <b>{files_count}</b>\n\n"
+            f"📎 Отправьте файл — он сохранится в облако.\n"
+            f"🛠️ <b>Файловый менеджер</b> — управление · "
+            f"⚙️ <b>Настройки</b> → 🌐 веб-панель"
         ),
         reply_markup=get_main_keboard(),
         parse_mode="HTML",
@@ -1134,13 +1127,8 @@ async def web_panel_handler(message: Message):
     await message.answer(
         text=(
             "🌐 <b>Веб-панель</b>\n\n"
-            "Управляйте файлами в браузере — удобно на телефоне:\n"
-            "• 🔍 поиск и фильтры по типу\n"
-            "• 📁 сетка / список\n"
-            "• 🔗 публичные ссылки\n"
-            "• 📊 статистика хранилища\n"
-            "• 👁 превью изображений\n\n"
-            f"🔗 Ссылка (2 часа):\n<code>{url}</code>"
+            "Ваша постоянная ссылка — сохраните в закладки:\n"
+            f"<code>{url}</code>"
         ),
         reply_markup=get_settings_keyboard(_get_user_settings(message.from_user.id)["notifications"]),
         parse_mode="HTML",
